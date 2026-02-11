@@ -365,6 +365,28 @@ function moveAnyToFront() {
 // ─── Simulate click on VIA's "Any" button ─────────────────────
 
 /**
+ * Simulates a complete click sequence with proper coordinates.
+ * Some React handlers inspect event coordinates, so we calculate them.
+ */
+function simulateClick(element: HTMLElement) {
+  const rect = element.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+
+  const eventOptions = {
+    bubbles: true,
+    cancelable: true,
+    view: window,
+    clientX: centerX,
+    clientY: centerY,
+  };
+
+  element.dispatchEvent(new MouseEvent('mousedown', eventOptions));
+  element.dispatchEvent(new MouseEvent('mouseup', eventOptions));
+  element.dispatchEvent(new MouseEvent('click', eventOptions));
+}
+
+/**
  * Click VIA's "Any" button to open the KeycodeModal,
  * then fill the input with `code` and click Confirm.
  *
@@ -379,9 +401,7 @@ function clickViaAnyAndFill(code: string) {
   if (!specialRow) return false;
 
   // Switch to Special category so the Any button exists in the DOM
-  specialRow.dispatchEvent(
-    new MouseEvent('click', {bubbles: true, cancelable: true}),
-  );
+  simulateClick(specialRow);
 
   // Wait for React to re-render, then click the Any button
   setTimeout(() => {
@@ -394,9 +414,7 @@ function clickViaAnyAndFill(code: string) {
       return;
     }
 
-    found.el.dispatchEvent(
-      new MouseEvent('click', {bubbles: true, cancelable: true}),
-    );
+    simulateClick(found.el);
 
     // Wait for the modal to render, then fill the input
     setTimeout(() => fillModalInput(code), 150);
@@ -443,10 +461,23 @@ function fillModalInput(code: string) {
     targetInput.value = code;
   }
 
-  // Dispatch input event so React picks up the change
-  targetInput.dispatchEvent(new Event('input', {bubbles: true}));
+  // Dispatch InputEvent with proper metadata for React's onChange handler
+  targetInput.dispatchEvent(
+    new InputEvent('input', {
+      bubbles: true,
+      inputType: 'insertText',
+      data: code,
+    }),
+  );
+
   // Also dispatch change for good measure
   targetInput.dispatchEvent(new Event('change', {bubbles: true}));
+
+  // Force React 16's internal value tracker to see the change
+  const tracker = (targetInput as any)._valueTracker;
+  if (tracker) {
+    tracker.setValue('');
+  }
 
   targetInput.focus();
 }
@@ -486,27 +517,105 @@ function injectAll() {
   moveAnyToFront();
 }
 
-// Watch for DOM changes — re-inject if React re-renders
+// Debounced MutationObserver for React re-renders
+let observerTimeout: number | undefined;
+
 const observer = new MutationObserver(() => {
-  const categoryMissing = !document.getElementById(CATEGORY_ID);
-  const searchMissing = !document.getElementById(SEARCH_WRAP_ID);
+  // Skip if already scheduled
+  if (observerTimeout !== undefined) return;
 
-  if (categoryMissing || searchMissing) {
-    injectAll();
-  }
+  observerTimeout = window.setTimeout(() => {
+    observerTimeout = undefined;
 
-  // Always try to move Any to front — VIA re-renders the grid
-  // when switching categories, so the marker attribute will be gone.
-  moveAnyToFront();
+    const categoryMissing = !document.getElementById(CATEGORY_ID);
+    const searchMissing = !document.getElementById(SEARCH_WRAP_ID);
+
+    if (categoryMissing || searchMissing) {
+      injectAll();
+    }
+
+    // Always try to move Any to front — VIA re-renders the grid
+    // when switching categories, so the marker attribute will be gone.
+    moveAnyToFront();
+  }, 80);
 });
 
 observer.observe(document.body, {
   childList: true,
   subtree: true,
+  attributes: false,
+  characterData: false,
 });
 
-// Initial attempt
-injectAll();
+// Wait for React to mount before initial injection
+async function waitForViaPane(): Promise<void> {
+  return new Promise((resolve) => {
+    let attempts = 0;
+    const maxAttempts = 100;
+
+    function check() {
+      attempts++;
+      const container = findSubmenuContainer();
+
+      if (container) {
+        resolve();
+        return;
+      }
+
+      if (attempts >= maxAttempts) {
+        console.warn(
+          '[VIA Ext] VIA pane not found after polling. MutationObserver will pick it up later.',
+        );
+        resolve();
+        return;
+      }
+
+      requestAnimationFrame(check);
+    }
+
+    requestAnimationFrame(check);
+  });
+}
+
+waitForViaPane().then(() => {
+  injectAll();
+});
+
+// Clean up observer on extension unload
+window.addEventListener('unload', () => {
+  observer.disconnect();
+  if (observerTimeout !== undefined) {
+    clearTimeout(observerTimeout);
+  }
+});
+
+// ─── Handle SPA Navigation (History API) ──────────────────────
+
+function onRouteChange() {
+  // Wait for React to render after navigation
+  setTimeout(() => {
+    injectAll();
+  }, 200);
+}
+
+// Override history methods to detect SPA navigation
+const originalPushState = history.pushState;
+const originalReplaceState = history.replaceState;
+
+history.pushState = function (...args) {
+  originalPushState.apply(this, args);
+  onRouteChange();
+};
+
+history.replaceState = function (...args) {
+  originalReplaceState.apply(this, args);
+  onRouteChange();
+};
+
+// Listen for back/forward navigation
+window.addEventListener('popstate', () => {
+  onRouteChange();
+});
 
 // ─── Global Keyboard Shortcut: Cmd+K / Ctrl+K ────────────────
 
