@@ -1,0 +1,52 @@
+name: Gate pull requests
+
+on:
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  check-author:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close PR if author is not approved
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Add GitHub usernames of approved contributors
+            const APPROVED_AUTHORS = [
+              'geoffmiller',
+            ];
+
+            const author = context.payload.pull_request.user.login;
+            const prNumber = context.payload.pull_request.number;
+
+            if (APPROVED_AUTHORS.includes(author)) {
+              console.log(`PR #${prNumber} by ${author} — approved author`);
+              return;
+            }
+
+            // Also allow Copilot/bot accounts
+            const authorType = context.payload.pull_request.user.type;
+            if (authorType === 'Bot') {
+              console.log(`PR #${prNumber} by ${author} — bot, allowed`);
+              return;
+            }
+
+            console.log(`PR #${prNumber} by ${author} — not approved, closing`);
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: `Hi @${author}, thanks for your interest! This repo isn't currently accepting external contributions. If you have a feature request or bug report, please open an issue instead.`,
+            });
+
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+              state: 'closed',
+            });
