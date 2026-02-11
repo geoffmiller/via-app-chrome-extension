@@ -21,6 +21,11 @@ const allKeycodes = getAllKeycodes();
 const IS_MAC = navigator.platform.toUpperCase().includes('MAC');
 const SHORTCUT_HINT = IS_MAC ? '⌘K' : 'Ctrl+K';
 
+// Performance and timing constants
+const MUTATION_DEBOUNCE_MS = 80; // Batch React re-renders to avoid excessive observer callbacks
+const MAX_VIA_PANE_POLL_ATTEMPTS = 100; // ~1.6s of polling via requestAnimationFrame
+const SPA_NAVIGATION_RENDER_DELAY_MS = 200; // Wait for React to render after SPA route change
+
 // ─── Helpers ──────────────────────────────────────────────────
 
 /** Find the submenu container (left sidebar with category rows) */
@@ -474,7 +479,12 @@ function fillModalInput(code: string) {
   targetInput.dispatchEvent(new Event('change', {bubbles: true}));
 
   // Force React 16's internal value tracker to see the change
-  const tracker = (targetInput as any)._valueTracker;
+  interface ReactInputWithTracker extends HTMLInputElement {
+    _valueTracker?: {
+      setValue(value: string): void;
+    };
+  }
+  const tracker = (targetInput as ReactInputWithTracker)._valueTracker;
   if (tracker) {
     tracker.setValue('');
   }
@@ -537,7 +547,7 @@ const observer = new MutationObserver(() => {
     // Always try to move Any to front — VIA re-renders the grid
     // when switching categories, so the marker attribute will be gone.
     moveAnyToFront();
-  }, 80);
+  }, MUTATION_DEBOUNCE_MS);
 });
 
 observer.observe(document.body, {
@@ -551,7 +561,6 @@ observer.observe(document.body, {
 async function waitForViaPane(): Promise<void> {
   return new Promise((resolve) => {
     let attempts = 0;
-    const maxAttempts = 100;
 
     function check() {
       attempts++;
@@ -562,7 +571,7 @@ async function waitForViaPane(): Promise<void> {
         return;
       }
 
-      if (attempts >= maxAttempts) {
+      if (attempts >= MAX_VIA_PANE_POLL_ATTEMPTS) {
         console.warn(
           '[VIA Ext] VIA pane not found after polling. MutationObserver will pick it up later.',
         );
@@ -595,20 +604,28 @@ function onRouteChange() {
   // Wait for React to render after navigation
   setTimeout(() => {
     injectAll();
-  }, 200);
+  }, SPA_NAVIGATION_RENDER_DELAY_MS);
 }
 
 // Override history methods to detect SPA navigation
 const originalPushState = history.pushState;
 const originalReplaceState = history.replaceState;
 
-history.pushState = function (...args) {
-  originalPushState.apply(this, args);
+history.pushState = function (
+  data: any,
+  unused: string,
+  url?: string | URL | null,
+) {
+  originalPushState.call(this, data, unused, url);
   onRouteChange();
 };
 
-history.replaceState = function (...args) {
-  originalReplaceState.apply(this, args);
+history.replaceState = function (
+  data: any,
+  unused: string,
+  url?: string | URL | null,
+) {
+  originalReplaceState.call(this, data, unused, url);
   onRouteChange();
 };
 
