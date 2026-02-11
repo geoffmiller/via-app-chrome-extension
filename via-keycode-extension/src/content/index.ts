@@ -20,6 +20,10 @@ const ANY_MOVED_ATTR = 'data-via-ext-any-moved';
 const allKeycodes = getAllKeycodes();
 const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
 const SHORTCUT_HINT = IS_MAC ? '⌘K' : 'Ctrl+K';
+const STORAGE_KEY = 'viaExtEnabled';
+
+/** Whether the extension is currently active. Toggled from the toolbar icon. */
+let extensionEnabled = true;
 
 // Performance and timing constants
 const MUTATION_DEBOUNCE_MS = 80; // Batch React re-renders to avoid excessive observer callbacks
@@ -577,7 +581,7 @@ function fillModalInput(code: string) {
   targetInput.focus();
 
   // Set up focus trapping so Tab cycles: input → Cancel → Confirm → input
-  trapFocusInModal(modal);
+  if (modal) trapFocusInModal(modal);
 }
 
 // ─── Modal Focus Trap ─────────────────────────────────────────
@@ -655,16 +659,26 @@ function injectCategory() {
 }
 
 function injectAll() {
+  if (!extensionEnabled) return;
   injectCategory();
   injectSearchBar();
   moveAnyToFront();
+}
+
+/** Remove all injected DOM elements (toggle off). */
+function removeAll() {
+  deactivateAllKeycodes();
+  document.getElementById(CATEGORY_ID)?.remove();
+  document.getElementById(SEARCH_WRAP_ID)?.remove();
+  document.getElementById(OVERLAY_ID)?.remove();
 }
 
 // Debounced MutationObserver for React re-renders
 let observerTimeout: number | undefined;
 
 const observer = new MutationObserver(() => {
-  // Skip if already scheduled
+  // Skip if disabled or already scheduled
+  if (!extensionEnabled) return;
   if (observerTimeout !== undefined) return;
 
   observerTimeout = window.setTimeout(() => {
@@ -724,8 +738,35 @@ async function waitForViaPane(): Promise<void> {
   });
 }
 
-waitForViaPane().then(() => {
+// ─── Toggle Support ───────────────────────────────────────────
+
+function enableExtension() {
+  extensionEnabled = true;
   injectAll();
+}
+
+function disableExtension() {
+  extensionEnabled = false;
+  removeAll();
+}
+
+// Listen for toggle messages from the service worker
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.type === 'via-ext-toggle') {
+    if (msg.enabled) {
+      enableExtension();
+    } else {
+      disableExtension();
+    }
+  }
+});
+
+// Check initial enabled state, then boot
+chrome.storage.local.get(STORAGE_KEY).then((result) => {
+  extensionEnabled = result[STORAGE_KEY] !== false; // default: enabled
+  if (extensionEnabled) {
+    waitForViaPane().then(() => injectAll());
+  }
 });
 
 // Clean up observer on page hide (pagehide fires reliably; unload is deprecated)

@@ -3,7 +3,12 @@
   "name": "VIA All Keycodes",
   "description": "Adds a searchable 'All Keycodes' master list to the VIA keyboard configurator",
   "version": "1.0.0",
-  "permissions": [],
+  "permissions": ["storage"],
+  "action": {},
+  "background": {
+    "service_worker": "src/background/service-worker.ts",
+    "type": "module"
+  },
   "content_scripts": [
     {
       "matches": ["https://www.usevia.app/*", "http://localhost:*/*"],

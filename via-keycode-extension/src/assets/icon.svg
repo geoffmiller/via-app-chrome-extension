@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <!-- Keycap top face gradient -->
+    <linearGradient id="cap-top" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3a3a3a" />
+      <stop offset="100%" stop-color="#2a2a2a" />
+    </linearGradient>
+    <!-- Keycap side/depth gradient -->
+    <linearGradient id="cap-side" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#222" />
+      <stop offset="100%" stop-color="#181818" />
+    </linearGradient>
+    <!-- Lightning bolt gradient -->
+    <linearGradient id="bolt" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0%" stop-color="#7cc4ff" />
+      <stop offset="50%" stop-color="#55aaee" />
+      <stop offset="100%" stop-color="#3388cc" />
+    </linearGradient>
+    <!-- Subtle glow filter -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Keycap base (bottom, gives 3D depth) -->
+  <rect x="8" y="12" width="112" height="112" rx="18" ry="18" fill="url(#cap-side)" />
+
+  <!-- Keycap top face (slightly inset and raised) -->
+  <rect x="12" y="8" width="104" height="104" rx="16" ry="16" fill="url(#cap-top)" stroke="#444"
+    stroke-width="1.5" />
+
+  <!-- Inner dish (subtle concave surface) -->
+  <rect x="22" y="18" width="84" height="84" rx="10" ry="10" fill="none" stroke="#363636"
+    stroke-width="1" />
+
+  <!-- Lightning bolt -->
+  <path d="M 70 20 L 48 60 L 62 60 L 54 100 L 82 52 L 66 52 Z"
+    fill="url(#bolt)" filter="url(#glow)" />
+</svg>
