@@ -18,7 +18,7 @@ const SEARCH_ID = 'via-ext-search';
 const SEARCH_WRAP_ID = 'via-ext-search-wrap';
 const ANY_MOVED_ATTR = 'data-via-ext-any-moved';
 const allKeycodes = getAllKeycodes();
-const IS_MAC = navigator.platform.toUpperCase().includes('MAC');
+const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
 const SHORTCUT_HINT = IS_MAC ? '⌘K' : 'Ctrl+K';
 
 // Performance and timing constants
@@ -590,19 +590,26 @@ waitForViaPane().then(() => {
   injectAll();
 });
 
-// Clean up observer on extension unload
-window.addEventListener('unload', () => {
+// Clean up observer on page hide (pagehide fires reliably; unload is deprecated)
+window.addEventListener('pagehide', () => {
   observer.disconnect();
   if (observerTimeout !== undefined) {
     clearTimeout(observerTimeout);
+  }
+  if (routeChangeTimeout !== undefined) {
+    clearTimeout(routeChangeTimeout);
   }
 });
 
 // ─── Handle SPA Navigation (History API) ──────────────────────
 
+let routeChangeTimeout: number | undefined;
+
 function onRouteChange() {
-  // Wait for React to render after navigation
-  setTimeout(() => {
+  // Debounce: cancel any pending re-inject before scheduling a new one
+  if (routeChangeTimeout !== undefined) clearTimeout(routeChangeTimeout);
+  routeChangeTimeout = window.setTimeout(() => {
+    routeChangeTimeout = undefined;
     injectAll();
   }, SPA_NAVIGATION_RENDER_DELAY_MS);
 }
@@ -612,7 +619,7 @@ const originalPushState = history.pushState;
 const originalReplaceState = history.replaceState;
 
 history.pushState = function (
-  data: any,
+  data: unknown,
   unused: string,
   url?: string | URL | null,
 ) {
@@ -621,7 +628,7 @@ history.pushState = function (
 };
 
 history.replaceState = function (
-  data: any,
+  data: unknown,
   unused: string,
   url?: string | URL | null,
 ) {
