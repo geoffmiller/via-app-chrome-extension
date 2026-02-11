@@ -1,5 +1,7 @@
 # VIA All Keycodes – Chrome Extension
 
+![VIA All Keycodes screenshot](docs/via-chrome-ex-screenshot.png)
+
 A Chrome extension that adds a searchable **"All Keycodes"** master list to the [VIA keyboard configurator](https://www.usevia.app/).
 
 ## Features
