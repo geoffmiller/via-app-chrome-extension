@@ -27,14 +27,26 @@ const MAX_VIA_PANE_POLL_ATTEMPTS = 100; // ~1.6s of polling via requestAnimation
 const SPA_NAVIGATION_RENDER_DELAY_MS = 200; // Wait for React to render after SPA route change
 
 // ─── Helpers ──────────────────────────────────────────────────
+// VIA's keycode pane is rendered inside a CSS Grid with a 3-column
+// layout (from src/components/panes/grid.tsx → Grid). We find this
+// grid by locating the category label container (BASIC, SPECIAL)
+// first — a cheap text check — then walking up to the grid ancestor.
+// Once found the grid is cached and we navigate children by position.
 
-/** Find the submenu container (left sidebar with category rows) */
-function findSubmenuContainer(): HTMLElement | null {
-  const allDivs = document.querySelectorAll('div');
-  for (const div of allDivs) {
-    const children = div.children;
-    if (children.length >= 3) {
-      const texts = Array.from(children).map((c) =>
+/** Cache the last-found grid element to avoid repeated scans. */
+let cachedGrid: HTMLElement | null = null;
+
+/**
+ * Find the MenuContainer div whose direct children are the category
+ * labels (BASIC, SPECIAL, etc.). This is the most unique fingerprint
+ * on the page and avoids any getComputedStyle calls.
+ */
+function findCategoryLabelContainer(): HTMLElement | null {
+  // Styled-components class names are random, but the structure is
+  // stable: a div with 3+ children whose text includes BASIC & SPECIAL.
+  for (const div of document.querySelectorAll('div')) {
+    if (div.children.length >= 3) {
+      const texts = Array.from(div.children).map((c) =>
         (c.textContent || '').trim().toUpperCase(),
       );
       if (texts.includes('BASIC') && texts.includes('SPECIAL')) {
@@ -45,30 +57,80 @@ function findSubmenuContainer(): HTMLElement | null {
   return null;
 }
 
-/** Find the overflow cell that shows the keycode grid (right pane) */
-function findKeycodeContainer(): HTMLElement | null {
-  const submenu = findSubmenuContainer();
-  if (!submenu) return null;
+/**
+ * Find VIA's top-level 3-column Grid element.
+ *
+ * Strategy: find the category label container (cheap text scan), then
+ * walk up the DOM to the Grid ancestor. The path from the labels to
+ * the Grid is:
+ *   Grid > SubmenuOverflowCell > MenuContainer > [SubmenuRow, ...]
+ *
+ * We walk up looking for an ancestor with 3+ children (the grid's
+ * three column cells). No getComputedStyle needed.
+ */
+function findKeycodeGrid(): HTMLElement | null {
+  // Return cached element if it's still in the document
+  if (cachedGrid && cachedGrid.isConnected) return cachedGrid;
+  cachedGrid = null;
 
-  let submenuCell = submenu.parentElement;
-  while (submenuCell && !submenuCell.nextElementSibling) {
-    submenuCell = submenuCell.parentElement;
-  }
+  const labelContainer = findCategoryLabelContainer();
+  if (!labelContainer) return null;
 
-  if (submenuCell && submenuCell.nextElementSibling) {
-    return submenuCell.nextElementSibling as HTMLElement;
+  // Walk up: MenuContainer → SubmenuOverflowCell → Grid
+  // The Grid has 3+ direct children (the column cells).
+  let el: HTMLElement | null = labelContainer.parentElement;
+  while (el) {
+    if (el.children.length >= 3) {
+      // Verify the 3rd child exists (the OverflowCell / right pane).
+      // The Grid is the first ancestor with 3+ children.
+      cachedGrid = el;
+      return cachedGrid;
+    }
+    el = el.parentElement;
   }
   return null;
 }
 
-/** Find the "Special" category row element */
-function findSpecialRow(container: HTMLElement): HTMLElement | null {
+/**
+ * Find the submenu container (left sidebar with category rows).
+ *
+ * This is the MenuContainer div that directly holds the SubmenuRow
+ * children — the same element findCategoryLabelContainer returns.
+ */
+function findSubmenuContainer(): HTMLElement | null {
+  return findCategoryLabelContainer();
+}
+
+/**
+ * Find the overflow cell that shows the keycode grid (right pane).
+ * This is the 3rd child (index 2) of VIA's Grid.
+ */
+function findKeycodeContainer(): HTMLElement | null {
+  const grid = findKeycodeGrid();
+  if (!grid) return null;
+  return (grid.children[2] as HTMLElement) ?? null;
+}
+
+/**
+ * Find a category row by label text inside the submenu container.
+ * Scoped to children of the known container — not a full-page scan.
+ */
+function findCategoryRow(
+  container: HTMLElement,
+  label: string,
+): HTMLElement | null {
+  const upper = label.toUpperCase();
   for (const child of Array.from(container.children)) {
-    if ((child.textContent || '').trim().toUpperCase() === 'SPECIAL') {
+    if ((child.textContent || '').trim().toUpperCase() === upper) {
       return child as HTMLElement;
     }
   }
   return null;
+}
+
+/** Convenience: find the "Special" category row. */
+function findSpecialRow(container: HTMLElement): HTMLElement | null {
+  return findCategoryRow(container, 'Special');
 }
 
 // ─── Persistent Search Bar ────────────────────────────────────
@@ -328,26 +390,38 @@ function createKeycodeRow(kc: IKeycode): HTMLElement {
 // ─── Move VIA's "Any" to front of Special category ──────────
 
 /**
- * Find VIA's native "Any" button in the current keycode grid.
- * Returns the element and its parent grid, or null if not found.
+ * Find VIA's KeycodeList grid inside the right pane.
+ * The KeycodeList uses `grid-auto-rows: 64px` and
+ * `grid-template-columns: repeat(auto-fill, 64px)` — unique on the page.
  */
-function findAnyElement(): {el: HTMLElement; parent: HTMLElement} | null {
+function findKeycodeListGrid(): HTMLElement | null {
   const container = findKeycodeContainer();
   if (!container) return null;
 
-  for (const el of container.querySelectorAll('*')) {
-    const text = (el as HTMLElement).textContent?.trim();
-    if (text === 'Any' && el.children.length <= 2) {
-      const rect = (el as HTMLElement).getBoundingClientRect();
-      if (
-        rect.width > 0 &&
-        rect.width < 200 &&
-        rect.height > 0 &&
-        rect.height < 200
-      ) {
-        const parent = (el as HTMLElement).parentElement;
-        if (parent) return {el: el as HTMLElement, parent};
-      }
+  for (const el of container.querySelectorAll('div')) {
+    const style = getComputedStyle(el);
+    if (style.display === 'grid' && style.gridAutoRows === '64px') {
+      return el as HTMLElement;
+    }
+  }
+  return null;
+}
+
+/**
+ * Find VIA's native "Any" button in the current keycode grid.
+ * Returns the element and its parent KeycodeList, or null if not found.
+ *
+ * The "Any" button (CustomKeycode) is a direct child of KeycodeList
+ * with text content "Any". We scope the search to the KeycodeList grid
+ * instead of scanning the entire container.
+ */
+function findAnyElement(): {el: HTMLElement; parent: HTMLElement} | null {
+  const keycodeList = findKeycodeListGrid();
+  if (!keycodeList) return null;
+
+  for (const child of Array.from(keycodeList.children)) {
+    if ((child.textContent || '').trim() === 'Any') {
+      return {el: child as HTMLElement, parent: keycodeList};
     }
   }
   return null;
@@ -429,24 +503,35 @@ function clickViaAnyAndFill(code: string) {
 }
 
 /**
+ * Find VIA's KeycodeModal overlay.
+ * The ModalBackground is a position:fixed div with z-index:2 and a
+ * semi-transparent background — unique on the page when open.
+ */
+function findModalOverlay(): HTMLElement | null {
+  for (const el of document.querySelectorAll('div')) {
+    const style = getComputedStyle(el);
+    if (
+      style.position === 'fixed' &&
+      style.zIndex === '2' &&
+      style.backgroundColor.includes('0.75') // rgba(0, 0, 0, 0.75)
+    ) {
+      return el as HTMLElement;
+    }
+  }
+  return null;
+}
+
+/**
  * Find the modal's text input, set it to `code`, and trigger React's
  * change detection so the Confirm button becomes enabled.
  */
 function fillModalInput(code: string) {
-  // The modal renders a TextInput with placeholder containing "KC_NO"
-  // Look for an input inside a modal-like overlay
-  const inputs = document.querySelectorAll('input[type="text"]');
-  let targetInput: HTMLInputElement | null = null;
-
-  for (const inp of inputs) {
-    const input = inp as HTMLInputElement;
-    const placeholder = input.placeholder || '';
-    // The modal input has placeholder like "KC_NO, 0xFF, etc."
-    if (placeholder.includes('KC_') || placeholder.includes('0x')) {
-      targetInput = input;
-      break;
-    }
-  }
+  // Find the modal overlay first, then the input inside it.
+  // This avoids matching inputs elsewhere on the page.
+  const modal = findModalOverlay();
+  const targetInput = modal
+    ? (modal.querySelector('input[type="text"]') as HTMLInputElement | null)
+    : null;
 
   if (!targetInput) {
     console.warn('[VIA Ext] Could not find modal input');
@@ -536,6 +621,11 @@ const observer = new MutationObserver(() => {
 
   observerTimeout = window.setTimeout(() => {
     observerTimeout = undefined;
+
+    // Invalidate grid cache if it was removed from the DOM
+    if (cachedGrid && !cachedGrid.isConnected) {
+      cachedGrid = null;
+    }
 
     const categoryMissing = !document.getElementById(CATEGORY_ID);
     const searchMissing = !document.getElementById(SEARCH_WRAP_ID);
