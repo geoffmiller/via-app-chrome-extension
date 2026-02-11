@@ -169,3 +169,14 @@
   background: var(--bg_icon, #444);
   color: var(--color_label-highlighted, #fff);
 }
+
+/* ---- Focus states for VIA's KeycodeModal ----
+   VIA sets outline:none on buttons and inputs globally.
+   We restore visible focus rings inside the modal so users
+   can see where Tab focus is. The [data-via-ext-focus-trap]
+   attribute is set by our focus-trap code. ---- */
+[data-via-ext-focus-trap] input:focus,
+[data-via-ext-focus-trap] button:focus {
+  outline: 2px solid var(--color_accent, #5ae);
+  outline-offset: 2px;
+}

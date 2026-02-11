@@ -575,6 +575,54 @@ function fillModalInput(code: string) {
   }
 
   targetInput.focus();
+
+  // Set up focus trapping so Tab cycles: input → Cancel → Confirm → input
+  trapFocusInModal(modal);
+}
+
+// ─── Modal Focus Trap ─────────────────────────────────────────
+
+/** Attribute to mark that the focus trap listener is already installed. */
+const FOCUS_TRAP_ATTR = 'data-via-ext-focus-trap';
+
+/**
+ * Trap Tab/Shift+Tab focus cycling within the modal overlay.
+ * The modal contains: TextInput, Cancel <button>, Confirm <button>.
+ * We collect all focusable elements and cycle through them.
+ */
+function trapFocusInModal(modal: HTMLElement) {
+  if (modal.hasAttribute(FOCUS_TRAP_ATTR)) return;
+  modal.setAttribute(FOCUS_TRAP_ATTR, 'true');
+
+  modal.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab') return;
+
+    const focusable = Array.from(
+      modal.querySelectorAll<HTMLElement>(
+        'input:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((el) => el.offsetParent !== null); // visible only
+
+    if (focusable.length === 0) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement as HTMLElement;
+
+    if (e.shiftKey) {
+      // Shift+Tab: wrap from first → last
+      if (active === first || !modal.contains(active)) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else {
+      // Tab: wrap from last → first
+      if (active === last || !modal.contains(active)) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  });
 }
 
 // ─── Injection & Observation ──────────────────────────────────
