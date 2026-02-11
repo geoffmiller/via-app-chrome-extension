@@ -1,0 +1,156 @@
+name: Sync upstream & check keycode changes
+
+on:
+  schedule:
+    - cron: '0 8 * * 1' # Every Monday at 8am UTC
+  workflow_dispatch: # Manual trigger from Actions tab
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  sync-and-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream and fetch
+        run: |
+          git remote add upstream https://github.com/the-via/app.git
+          git fetch upstream main
+
+      - name: Check for new upstream commits
+        id: check
+        run: |
+          COMMIT_COUNT=$(git rev-list HEAD..upstream/main --count)
+          echo "commit_count=$COMMIT_COUNT" >> "$GITHUB_OUTPUT"
+          echo "Found $COMMIT_COUNT new upstream commits"
+
+          if [ "$COMMIT_COUNT" -eq 0 ]; then
+            echo "Already up to date."
+            exit 0
+          fi
+
+          # Check which files changed in the new commits
+          CHANGED=$(git diff HEAD..upstream/main --name-only)
+          echo "All changed files:"
+          echo "$CHANGED"
+
+          # Filter for extension-relevant files:
+          # - Keycode data: advanced-keys, keycodes, key.ts, key-to-byte, macro-api
+          # - DOM structure: grid.tsx, keycode.tsx, custom-keycode-modal, save-load
+          # - UI components: accent-button, text-input, dialog-base
+          # - Styling: styled, .css files in panes/components
+          RELEVANT_FILES=$(echo "$CHANGED" | grep -E \
+            '(advanced-keys|autocomplete-keycodes|key\.ts|keycode|keycodes|key-to-byte|macro-api|grid\.tsx|custom-keycode-modal|save-load|accent-button|text-input|dialog-base|styled|panes/configure-panes/|components/inputs/)' \
+            || true)
+
+          if [ -n "$RELEVANT_FILES" ]; then
+            echo "relevant_changes=true" >> "$GITHUB_OUTPUT"
+            echo "relevant_files<<EOF" >> "$GITHUB_OUTPUT"
+            echo "$RELEVANT_FILES" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+            echo "🔑 Extension-relevant changes detected:"
+            echo "$RELEVANT_FILES"
+          else
+            echo "relevant_changes=false" >> "$GITHUB_OUTPUT"
+            echo "No extension-relevant changes."
+          fi
+
+      - name: Merge upstream into main
+        if: steps.check.outputs.commit_count > 0
+        run: |
+          echo "Merging ${{ steps.check.outputs.commit_count }} upstream commits..."
+          git merge upstream/main --no-edit || {
+            echo "::warning::Merge conflict detected. Aborting merge."
+            git merge --abort
+            echo "merge_failed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          git push origin main
+
+      - name: Open issue for extension-relevant changes
+        if: steps.check.outputs.relevant_changes == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const files = `${{ steps.check.outputs.relevant_files }}`;
+            const count = '${{ steps.check.outputs.commit_count }}';
+
+            // Check for existing open issue to avoid duplicates
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'upstream-change',
+              state: 'open',
+            });
+
+            if (existing.data.length > 0) {
+              // Append a comment to the existing issue
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.data[0].number,
+                body: `### New sync (${new Date().toISOString().split('T')[0]})\n\n${count} upstream commits merged. Extension-relevant files changed:\n\n\`\`\`\n${files}\n\`\`\`\n\nPlease review and update the extension if needed.`,
+              });
+              return;
+            }
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '⌨️ Upstream VIA changes may affect extension',
+              body: [
+                `The upstream [the-via/app](https://github.com/the-via/app) repo has **${count} new commit(s)** that touch files the extension depends on.`,
+                '',
+                '### Changed files',
+                '```',
+                files,
+                '```',
+                '',
+                '### Action needed',
+                '- [ ] Review the changed files for DOM/component structure changes',
+                '- [ ] Check if keycode data needs updating (`via-keycode-extension/src/data/keycodes.ts`)',
+                '- [ ] Check if structural DOM finders still work (`findKeycodeGrid`, `findCategoryLabelContainer`, etc.)',
+                '- [ ] Check if modal/input selectors still match (`findModalOverlay`, `findAnyElement`, etc.)',
+                '- [ ] Rebuild and test the extension on usevia.app',
+                '',
+                '*This issue was created automatically by the upstream sync workflow.*',
+              ].join('\n'),
+              labels: ['upstream-change'],
+            });
+
+      - name: Open issue for merge conflict
+        if: steps.check.outputs.merge_failed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '⚠️ Upstream sync failed – merge conflict',
+              body: [
+                'The weekly upstream sync from [the-via/app](https://github.com/the-via/app) failed due to a merge conflict.',
+                '',
+                'Please resolve manually:',
+                '```bash',
+                'git remote add upstream https://github.com/the-via/app.git',
+                'git fetch upstream main',
+                'git merge upstream/main',
+                '# resolve conflicts, then:',
+                'git push origin main',
+                '```',
+                '',
+                '*This issue was created automatically by the upstream sync workflow.*',
+              ].join('\n'),
+              labels: ['upstream-sync'],
+            });
