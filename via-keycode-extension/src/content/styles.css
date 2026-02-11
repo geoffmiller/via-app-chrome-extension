@@ -1,0 +1,171 @@
+/* ============================================================
+   VIA All Keycodes – Chrome Extension Injected Styles
+   Matches the VIA webapp's visual language (CSS custom properties)
+   ============================================================ */
+
+/* ---- Overlay (covers React DOM without destroying it) ---- */
+.via-ext-overlay {
+  position: absolute;
+  top: 41px; /* below the persistent search bar */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  background: var(--bg_outside-accent, #1a1a1a);
+  overflow: auto;
+}
+
+/* ---- Persistent search bar (always visible at top of keycode pane) ---- */
+#via-ext-search-wrap {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: 8px 12px 4px;
+  background: var(--bg_control, #2b2b2b);
+  border-bottom: 1px solid var(--border_color_cell, #333);
+}
+
+#via-ext-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 2px solid var(--border_color_icon, #444);
+  background: var(--bg_control, #333);
+  color: var(--color_label-highlighted, #fff);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+#via-ext-search:focus {
+  border-color: var(--color_accent, #5ae);
+}
+
+#via-ext-search::placeholder {
+  color: var(--color_label, #888);
+}
+
+/* ---- Result count ---- */
+#via-ext-result-count {
+  font-size: 12px;
+  color: var(--color_label, #888);
+  padding: 8px 12px 6px;
+}
+
+/* ---- Keycode list ---- */
+#via-ext-keycode-list {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 12px 30px;
+}
+
+/* ---- List row ---- */
+.via-ext-list-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+  outline: none;
+}
+
+.via-ext-list-row:hover,
+.via-ext-list-row:focus {
+  background: var(--bg_icon, #333);
+}
+
+.via-ext-list-row:focus {
+  box-shadow: inset 0 0 0 2px var(--color_accent, #5ae);
+}
+
+.via-ext-list-row-active {
+  background: #4caf50 !important;
+}
+
+.via-ext-list-row-active .via-ext-list-name {
+  color: #fff;
+}
+
+.via-ext-list-row-active .via-ext-list-code {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Mini key icon */
+.via-ext-list-icon {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 6px;
+  border: 3px solid var(--border_color_icon, #444);
+  background: var(--bg_control, #333);
+  color: var(--color_label-highlighted, #fff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 13px;
+  text-align: center;
+  overflow: hidden;
+  box-sizing: border-box;
+  white-space: pre-wrap;
+  flex-shrink: 0;
+}
+
+.via-ext-list-icon span {
+  text-overflow: ellipsis;
+  overflow: hidden;
+  display: block;
+  max-width: 100%;
+}
+
+/* Name / description */
+.via-ext-list-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--color_label-highlighted, #fff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- Code */
+.via-ext-list-code {
+  font-size: 12px;
+  color: var(--color_label, #888);
+  font-family: monospace;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ---- Submenu row for the new category ---- */
+.via-ext-submenu-row {
+  cursor: pointer;
+  white-space: nowrap;
+  margin-bottom: 11px;
+  font-size: 20px;
+  line-height: 20px;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  font-weight: 400;
+  min-width: min-content;
+  border-left: 2px solid transparent;
+  border-radius: 12px;
+  color: var(--color_label, #888);
+  background: inherit;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+
+.via-ext-submenu-row:hover {
+  color: var(--color_label-highlighted, #fff);
+}
+
+.via-ext-submenu-row.selected {
+  background: var(--bg_icon, #444);
+  color: var(--color_label-highlighted, #fff);
+}

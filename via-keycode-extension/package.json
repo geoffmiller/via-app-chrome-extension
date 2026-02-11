@@ -1,0 +1,17 @@
+{
+  "name": "via-all-keycodes",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Chrome extension that adds a searchable 'All Keycodes' category to the VIA webapp",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.0.0-beta.28",
+    "@types/chrome": "^0.0.268",
+    "typescript": "^5.4.0",
+    "vite": "^5.4.0"
+  }
+}
